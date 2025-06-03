@@ -1,0 +1,3 @@
+[submodule "src/scara_robot"]
+	path = src/scara_robot
+	url = git@github.com:aniketmpatil/scara_robot.git
