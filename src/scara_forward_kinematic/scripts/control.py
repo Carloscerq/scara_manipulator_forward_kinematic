@@ -92,7 +92,7 @@ class ControlKinematic:
 
             self.theta1 = random.uniform(-1.0, 1.0)
             self.theta2 = random.uniform(-1.0, 1.0)
-            self.d4 = random.uniform(0.0, 1.0)
+            self.d4 = random.uniform(-1.0, 1.0)
 
             joint_one_value.data = self.theta1
             joint_two_value.data = self.theta2
@@ -101,6 +101,7 @@ class ControlKinematic:
             rospy.loginfo(f"Publishing Joint Values: Joint 1: {joint_one_value.data}, Joint 2: {joint_two_value.data}, Joint 3: {joint_three_value.data}")
             self.joint_one_publisher.publish(joint_one_value)
             self.joint_two_publisher.publish(joint_two_value)
+            self.joint_three_publisher.publish(joint_three_value)
 
             self.theta[1] = self.theta1
             self.theta[2] = self.theta2
