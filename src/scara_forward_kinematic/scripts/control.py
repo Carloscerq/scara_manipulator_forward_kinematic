@@ -6,6 +6,9 @@ from std_srvs.srv import Empty
 import math
 import random
 import numpy as np
+import tf2_ros
+from tf.transformations import euler_from_quaternion
+from scipy.spatial.transform import Rotation
 
 class ControlKinematic:
 
@@ -20,6 +23,13 @@ class ControlKinematic:
     theta1: float = 0.0
     theta2: float = 0.0
 
+    points = []
+    truth = []
+    pred = []
+
+    angles_truth = []
+    angles_pred = []
+
     def __init__(self):
         rospy.init_node('control_kinematic', anonymous=True)
         self.joint_one_publisher = rospy.Publisher("/scara_robot/joint1_position_controller/command", Float64, queue_size=10)
@@ -27,9 +37,11 @@ class ControlKinematic:
         self.joint_three_publisher = rospy.Publisher("/scara_robot/joint3_position_controller/command", Float64, queue_size=10)
         self.pose_subscriber = rospy.Subscriber("/scara_robot/output_pose", Pose, self.pose_callback)
 
+        self.tf_buffer = tf2_ros.Buffer()
+        self.listener = tf2_ros.TransformListener(self.tf_buffer)
         self.a = [0, 1, 1, 0]
         self.alpha = [0, 0, math.pi, 0]
-        self.d = [0.5, 1, 0, self.d4]
+        self.d = [0.3, 1, 0, self.d4]
         self.theta = [0, self.theta1, self.theta2, 0]
 
         self.compare = False
@@ -42,7 +54,9 @@ class ControlKinematic:
             return
 
         self.response_data = data
+        trans = self.tf_buffer.lookup_transform("base", "link3", rospy.Time(), rospy.Duration(1.0))
         rospy.loginfo(f"Received Pose: {data}")
+        rospy.loginfo(f"Received Pose: {trans}")
         self.compare = False
         self.pose_received = True  # <-- Flag set here
 
@@ -64,13 +78,28 @@ class ControlKinematic:
 
         rospy.loginfo(f"Transformation Matrix T: {T}")
         end_effector_position = T[:3, 3]
-        end_effector_position[2] = data.position.z  # Set the z-coordinate to match the received pose
+        #end_effector_position[2] = data.position.z  # Set the z-coordinate to match the received pose
         rospy.loginfo(f"End Effector Position: {end_effector_position}")
 
-        if np.allclose(end_effector_position, np.array([data.position.x, data.position.y, data.position.z]), atol=1e-2):
-            rospy.loginfo("End Effector Position matches the received pose.")
-        else:
-            rospy.logwarn("End Effector Position does not match the received pose.")
+        # Get the quaternion from the transform
+        q = trans.transform.rotation
+        quaternion = [q.x, q.y, q.z, q.w]
+
+        # Convert to roll, pitch, yaw
+        roll, pitch, yaw = euler_from_quaternion(quaternion)
+        rospy.loginfo(f"Truth Roll Pitch Yaw - {roll}, {pitch}, {yaw}")
+        self.angles_truth.append([roll, pitch, yaw])
+
+        rotation_matrix = T[:3, :3]
+        rot = Rotation.from_dcm(rotation_matrix)
+        roll, pitch, yaw = rot.as_euler('xyz', degrees=False)
+        rospy.loginfo(f"Pred Roll Pitch Yaw - {roll}, {pitch}, {yaw}")
+        self.angles_pred.append([roll, pitch, yaw])
+
+        self.pred.append(end_effector_position)
+        self.truth.append([trans.transform.translation.x,
+                trans.transform.translation.y,
+                trans.transform.translation.z])
 
     def run(self):
         rospy.loginfo("Control Kinematic Node Running")
@@ -92,7 +121,7 @@ class ControlKinematic:
 
             self.theta1 = random.uniform(-1.0, 1.0)
             self.theta2 = random.uniform(-1.0, 1.0)
-            self.d4 = random.uniform(-1.0, 1.0)
+            self.d4 = random.uniform(0, 1.0)
 
             joint_one_value.data = self.theta1
             joint_two_value.data = self.theta2
@@ -106,8 +135,11 @@ class ControlKinematic:
             self.theta[1] = self.theta1
             self.theta[2] = self.theta2
             self.d[3] = self.d4
+            self.points.append([self.theta1, self.theta2, self.d4])
 
-            rospy.sleep(30)
+            rospy.sleep(10)
+
+            #self.pose_callback()
 
             self.compare = True
             self.pose_received = False  # <-- Reset before waiting
@@ -117,6 +149,25 @@ class ControlKinematic:
                 rospy.sleep(1)
 
         rospy.loginfo("Control Kinematic Node Finished Running")
+        print("Points:")
+        for i in self.points:
+            print(i)
+
+        print("pred")
+        for i in self.pred:
+            print(i)
+
+        print("truth")
+        for i in self.truth:
+            print(i)
+
+        print("angles - truth")
+        for i in self.angles_truth:
+            print(i)
+
+        print("angles - pred")
+        for i in self.angles_pred:
+            print(i)
 
 
 if __name__ == "__main__":
